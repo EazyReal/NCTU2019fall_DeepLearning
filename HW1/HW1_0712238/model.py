@@ -11,26 +11,30 @@ class NN(object):
         self.biases = []
         self.usage = usage
         for i in range(len(layers)-1):
-            self.weights.append(np.random.randn(layers[i+1], layers[i])*0.1) #the *0.1 is impmortant
-            self.biases.append(np.random.randn(layers[i+1], 1)*0.1)
+            if self.activations[i] in ['relu', 'selu', 'elu']:
+                self.weights.append(np.random.randn(layers[i+1], layers[i])*np.sqrt(2./layers[i])) #heuristic
+                self.biases.append(np.random.randn(layers[i+1], 1)*0.1) #can be 0
+            else:
+                self.weights.append(np.random.randn(layers[i+1], layers[i])*np.sqrt(1./layers[i])) #heuristic
+                self.biases.append(np.random.randn(layers[i+1], 1)*0.1) #can be 0
+
 
     def feedforward(self, x): #x = dim*num
         ai = np.copy(x)
         z_s = []
         a_s = [ai]
         for i in range(len(self.weights)):
-            #activation_function = self.AF(self.activations[i])
             z_s.append(self.weights[i].dot(ai) + self.biases[i])
             ai = self.AF(self.activations[i])(z_s[-1])
             a_s.append(ai)
-        return (z_s, a_s)
+        return z_s, a_s
 
     def backpropagation(self,y, z_s, a_s): #y = 1*num
-        dw = []  # dC/dW
-        db = []  # dC/dB
-        deltas = [None] * len(self.weights)  # delta = dC/dZ, error for each layer
+        dw = []  # dJ/dW
+        db = []  # dJ/dB
+        deltas = [None] * len(self.weights)  # delta = dJ/dZ, error for each layer
 
-        #out delta measurement =
+        #delta out
         delta_out = self.dJ(self.usage)(a_s[-1], y)
         #last layer delta
         deltas[-1] = delta_out*(self.dAF(self.activations[-1]))(z_s[-1])
@@ -40,11 +44,10 @@ class NN(object):
         batch_size = y.shape[1]
         db = [d.dot(np.ones((batch_size,1)))/float(batch_size) for d in deltas]
         dw = [d.dot(a_s[i].T)/float(batch_size) for i,d in enumerate(deltas)]
-        #db = [d.dot(np.ones((batch_size,1))) for d in deltas]
-        #dw = [d.dot(a_s[i].T) for i,d in enumerate(deltas)]
-        # return the derivitives respect to weight matrix and biases
-        #print(db)
-        #print(dw)
+
+        eps = 0.001
+        #for i in range(len(dw)):
+        #    assert(np.linalg.norm(dw[i]) > eps)
         return dw, db
 
     def train(self, x, y, batch_size=10, epochs=100, lr = 0.1): #x = num*dim #y = num*dim
@@ -103,17 +106,20 @@ class NN(object):
     def AF(name):
         if(name == 'sigmoid'):
             def sig(x):
-                x = np.clip(x , -500, 500)
+                x = np.clip(x , -10., 10.)
                 return np.exp(x)/(1+np.exp(x))
             return sig
         elif(name == 'linear'):
             return lambda x : x
         elif(name == 'relu'):
             def relu(x):
-                y = np.copy(x)
-                y[y<0] = 0
-                return y
+                return np.where(x<0,0,x)
             return relu
+        elif(name == 'selu'):
+            def selu(x,lamb=1.0507009873554804934193349852946, alpha=1.6732632423543772848170429916717):
+                x = np.clip(x , -10., 10.)
+                return lamb*np.where(x<0,alpha*(np.exp(x) - 1),x)
+            return selu
         else:
             print('unknown activation function => linear')
             return lambda x: x
@@ -122,7 +128,7 @@ class NN(object):
     def dAF(name):
         if(name == 'sigmoid'):
             def dsig(x):
-                x = np.clip(x , -500, 500)
+                x = np.clip(x , -10., 10.)
                 sigx = np.exp(x)/(1+np.exp(x))
                 return sigx*(1-sigx)
             return dsig
@@ -130,11 +136,13 @@ class NN(object):
             return lambda x: 1
         elif(name == 'relu'):
             def drelu(x):
-                y = np.copy(x)
-                y[y>=0] = 1
-                y[y<0] = 0
-                return y
+                return np.where(x<0,0,1)
             return drelu
+        elif(name == 'selu'):
+            def dselu(x,lamb=1.0507009873554804934193349852946, alpha=1.6732632423543772848170429916717):
+                x = np.clip(x , -10., 10.)
+                return lamb*np.where(x<0,alpha*np.exp(x),1)
+            return dselu
         else:
             print('unknown activation function => linear derivative')
             return lambda x: 1
@@ -144,7 +152,11 @@ class NN(object):
         if(name == 'regression'):
             return lambda x, y: y-x
         if(name == 'classification'):
-            return lambda x, y: np.divide(y, x) - np.divide(1 - y, 1 - x)
+            def dCE(yhat, y):
+                epsilon=1e-12
+                yhat = np.clip(yhat, epsilon, 1. - epsilon)
+                return np.divide(y, yhat) - np.divide(1 - y, 1 - yhat)
+            return dCE
         else:
             print('unknown usage => regression')
             return lambda x, y: y-x
@@ -152,7 +164,7 @@ class NN(object):
     @staticmethod
     def J(name):
         if(name == 'regression'):
-            return lambda x, y: np.sqrt(np.linalg.norm(y-x)/max(y.shape[0], y.shape[1])) #RMS
+            return lambda x, y: np.linalg.norm(y-x)/np.sqrt(max(y.shape[0], y.shape[1])) #RMS
         if(name == 'classification'):
             def cross_entropy(yhat, y):
                 epsilon=1e-12
@@ -163,4 +175,4 @@ class NN(object):
             return cross_entropy
         else:
             print('unknown usage => regression')
-            return lambda x, y: np.sqrt(np.linalg.norm(y-x)/max(y.shape[0], y.shape[1])) #RMS
+            return lambda x, y: np.linalg.norm(y-x)/np.sqrt(max(y.shape[0], y.shape[1])) #RMS
