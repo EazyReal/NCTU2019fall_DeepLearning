@@ -34,7 +34,7 @@ class NN(object):
         db = []  # dJ/dB
         deltas = [None] * len(self.weights)  # delta = dJ/dZ, error for each layer
 
-        #delta out(dJ/dOut)
+        #delta out
         delta_out = self.dJ(self.usage)(a_s[-1], y)
         #last layer delta
         deltas[-1] = delta_out*(self.dAF(self.activations[-1]))(z_s[-1])
@@ -44,7 +44,8 @@ class NN(object):
         batch_size = y.shape[1]
         db = [d.dot(np.ones((batch_size,1)))/float(batch_size) for d in deltas]
         dw = [d.dot(a_s[i].T)/float(batch_size) for i,d in enumerate(deltas)]
-        #eps = 0.001
+
+        eps = 0.001
         #for i in range(len(dw)):
         #    assert(np.linalg.norm(dw[i]) > eps)
         return dw, db
@@ -52,28 +53,33 @@ class NN(object):
     def train(self, x, y, batch_size=10, epochs=100, lr = 0.1): #x = num*dim #y = num*dim
         #record cost by epchos
         learning_curve = []
-        #mini batch + shuffle
-        #epcho = dataset is used epcho times
-        #iteration*batchsize ~= dataset size
+
+        #mini batch
+        #assert(x.shape[0] >= batch_size*epochs)
         indices = np.arange(x.shape[0])#debug if 0
         np.random.shuffle(indices)
         x = x[indices]
         y = y[indices]
 
         for e in range(epochs):
-            cur = 0
-            while(cur < len(y)):
-                nxt = cur + batch_size
-                x_batch, y_batch  = x[cur:nxt], y[cur:nxt] #if nxt>len(y)=>just the last segment
-                x_batch, y_batch = x_batch.T, y_batch.T #print(y_batch.shape)
-                cur = nxt
+            i=0
+            #print("len y  ", len(y))
+            while(i<len(y)):
+                x_batch = x[i:i+batch_size]
+                y_batch = y[i:i+batch_size]
+                x_batch = x_batch.T
+                y_batch = y_batch.T
+                #print(x_batch.shape)
+                #print(y_batch.shape)
+                i += batch_size
                 z_s, a_s = self.feedforward(x_batch)
                 dw, db = self.backpropagation(y_batch, z_s, a_s)
                 self.weights = [wi+lr*dwi for wi,dwi in  zip(self.weights, dw)]
                 self.biases = [bi+lr*dbi for bi,dbi in  zip(self.biases, db)]
                 loss = self.J(self.usage)(a_s[-1],y_batch)
-            learning_curve.append(loss) #learning_curve update per epoch
-
+            #if(e%(epochs/10)== 0):
+            learning_curve.append(loss) #to expand
+            #print("loss = {}".format(np.linalg.norm(a_s[-1]-y_batch))) #to expand
         return learning_curve
 
 

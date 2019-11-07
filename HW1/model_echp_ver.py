@@ -49,30 +49,33 @@ class NN(object):
         #    assert(np.linalg.norm(dw[i]) > eps)
         return dw, db
 
-    def train(self, x, y, batch_size=10, epochs=100, lr = 0.1): #x = num*dim #y = num*dim
+    def train(self, x, y, batch_size=10, epochs=1, lr = 0.1): #x = num*dim #y = num*dim
         #record cost by epchos
         learning_curve = []
         #mini batch + shuffle
         #epcho = dataset is used epcho times
         #iteration*batchsize ~= dataset size
-        indices = np.arange(x.shape[0])#debug if 0
-        np.random.shuffle(indices)
-        x = x[indices]
-        y = y[indices]
-
+        iteration = int(x.shape[0]/batch_size+0.5)
         for e in range(epochs):
+            indices = np.arange(x.shape[0])#debug if 0
+            np.random.shuffle(indices)
+            x = x[indices]
+            y = y[indices]
+
             cur = 0
-            while(cur < len(y)):
+            for it_i in range(iteration):
                 nxt = cur + batch_size
-                x_batch, y_batch  = x[cur:nxt], y[cur:nxt] #if nxt>len(y)=>just the last segment
+                if it_i == iteration-1:
+                    nxt = -1
+                x_batch, y_batch  = x[cur:nxt], y[cur:nxt]
                 x_batch, y_batch = x_batch.T, y_batch.T #print(y_batch.shape)
-                cur = nxt
                 z_s, a_s = self.feedforward(x_batch)
                 dw, db = self.backpropagation(y_batch, z_s, a_s)
                 self.weights = [wi+lr*dwi for wi,dwi in  zip(self.weights, dw)]
                 self.biases = [bi+lr*dbi for bi,dbi in  zip(self.biases, db)]
                 loss = self.J(self.usage)(a_s[-1],y_batch)
-            learning_curve.append(loss) #learning_curve update per epoch
+                learning_curve.append(loss)
+                cur = nxt
 
         return learning_curve
 
